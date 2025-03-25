@@ -1,2 +1,4 @@
 /venv
-/config/settings.py
+config/settings.py
+/.env
+

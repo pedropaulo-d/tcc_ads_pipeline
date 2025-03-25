@@ -1,52 +1,81 @@
 import requests
-from database.db_connection import get_db_connection
+import json
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from datetime import datetime, timedelta
+from config.settings import META_ACCESS_TOKEN, META_AD_ACCOUNT_ID
 
-# Configurações da API
-ACCESS_TOKEN = "SEU_ACCESS_TOKEN"
-AD_ACCOUNT_ID = "SEU_AD_ACCOUNT_ID"
-API_VERSION = "v16.0"
-URL = f"https://graph.facebook.com/{API_VERSION}/act_{AD_ACCOUNT_ID}/insights"
+def fetch_meta_ads_data(start_date=None, end_date=None):
+    """ Obtém os dados do Meta Ads para o período especificado """
+    print("Buscando dados do Meta Ads...")
 
-def fetch_meta_ads_data():
-    """Busca os dados de campanhas no Meta Ads."""
-    params = {
-        "access_token": ACCESS_TOKEN,
-        "fields": "impressions,clicks,ctr,cpc,cpm,spend,conversions,roas,leads,cpl",
-        "time_range": {"since": "2025-03-01", "until": "2025-03-15"}
-    }
+    # Se não passar datas, pega os últimos 7 dias
+    if not start_date or not end_date:
+        end_date = datetime.today()
+        start_date = end_date - timedelta(days=7)
+
+    # Converter strings para objetos datetime
+    start_date = datetime.strptime(start_date, "%Y-%m-%d")
+    end_date = datetime.strptime(end_date, "%Y-%m-%d")
     
-    response = requests.get(URL, params=params)
-    if response.status_code == 200:
-        return response.json().get('data', [])
-    else:
-        print(f"Erro ao buscar dados: {response.text}")
+    # Formatar corretamente para a API do Meta Ads
+    start_date = start_date.strftime("%Y-%m-%d")
+    end_date = end_date.strftime("%Y-%m-%d")
+
+    print(f"Buscando dados de {start_date} até {end_date}...")
+
+    url = f"https://graph.facebook.com/v22.0/act_{META_AD_ACCOUNT_ID}/insights"
+    
+    params = {
+        "access_token": META_ACCESS_TOKEN,
+        "fields": "impressions,clicks,ctr,cpc,cpm,spend,actions",
+        "time_range": json.dumps({"since": start_date, "until": end_date})
+    }
+
+    try:
+        response = requests.get(url, params=params)
+        response_data = response.json()
+
+        if "error" in response_data:
+            print(f"Erro na requisição: {response_data['error']['message']}")
+            return []
+
+        data = response_data.get("data", [])
+
+        extracted_data = []
+        for insights in data:
+            spend = float(insights.get("spend", 0))  # Gasto total
+            leads = 0
+            
+            # Busca os Leads dentro da lista "actions"
+            for action in insights.get("actions", []):
+                if action["action_type"] == "lead":
+                    leads = int(action["value"])
+                    break
+            
+            # Calcula o CPL (Custo por Lead)
+            cpl = round(spend / leads, 2) if leads > 0 else None  
+
+            extracted_data.append({
+                "impressions": int(insights.get("impressions", 0)),
+                "clicks": int(insights.get("clicks", 0)),
+                "ctr": float(insights.get("ctr", 0)),
+                "cpc": float(insights.get("cpc", 0)),
+                "cpm": float(insights.get("cpm", 0)),
+                "spend": spend,
+                "leads": leads,
+                "cpl": cpl
+            })
+
+        print("Dados extraídos com sucesso!")
+        return extracted_data
+
+    except Exception as e:
+        print(f"Erro ao buscar dados do Meta Ads: {e}")
         return []
 
-def save_to_database(data):
-    """Salva os dados no PostgreSQL."""
-    conn = get_db_connection()
-    if conn is None:
-        return
-
-    cursor = conn.cursor()
-    
-    for entry in data:
-        cursor.execute("""
-            INSERT INTO meta_ads_data (impressions, clicks, ctr, cpc, cpm, gasto, conversoes, roas, leads, cpl)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (
-            entry['impressions'], entry['clicks'], entry['ctr'],
-            entry['cpc'], entry['cpm'], entry['spend'], 
-            entry['conversions'], entry['roas'], entry['leads'], entry['cpl']
-        ))
-
-    conn.commit()
-    cursor.close()
-    conn.close()
-
+# Teste rápido
 if __name__ == "__main__":
-    print("Buscando dados do Meta Ads...")
-    data = fetch_meta_ads_data()
-    print("Salvando no banco de dados...")
-    save_to_database(data)
-    print("Processo concluído!")
+    data = fetch_meta_ads_data("2025-01-01", "2025-03-25")
+    print(json.dumps(data, indent=4))
