@@ -11,18 +11,28 @@ CREATE TABLE clientes (
 
 CREATE TABLE meta_ads_data (
     id SERIAL PRIMARY KEY,
-    cliente_id INT REFERENCES clientes(id) ON DELETE CASCADE, -- Referência ao cliente
-    data_inicio DATE NOT NULL, -- Período da consulta (início)
-    data_fim DATE NOT NULL, -- Período da consulta (fim)
-    impressions INT NOT NULL, 
-    clicks INT NOT NULL,
-    ctr NUMERIC(10, 6) NOT NULL,
-    cpc NUMERIC(10, 6) NOT NULL,
-    cpm NUMERIC(10, 6) NOT NULL,
-    spend NUMERIC(10, 2) NOT NULL,
-    leads INT NOT NULL,
-    cpl NUMERIC(10, 2) NOT NULL
+    cliente_id INTEGER REFERENCES clientes(id),
+    data_inicio DATE,
+    data_fim DATE,
+	campaign_id TEXT,  -- ID da campanha (se for geral, pode ser NULL)
+    campaign_name TEXT,  -- Nome da campanha
+    impressions INTEGER,
+    clicks INTEGER,
+    ctr FLOAT,
+    cpc FLOAT,
+    cpm FLOAT,
+    spend FLOAT,
+    leads INTEGER,
+    cpl FLOAT
 );
+
+select * from meta_ads_data
+select * from clientes
+
+select t1.nome, t2.data_inicio, t2.data_fim, t2.campaign_name
+from clientes as t1
+inner join meta_ads_data as t2
+on t1.id = t2.cliente_id
 
 select * from meta_ads_data
 
